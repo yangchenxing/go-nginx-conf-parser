@@ -1,6 +1,6 @@
 # go-nginx-conf-parser
 
-[![Language](https://img.shields.io/badge/language-Go-blue.svg)(https://golang.org)]
+[![Language](https://img.shields.io/badge/language-Go-blue.svg)](https://golang.org)
 [![Go Report Card](https://goreportcard.com/badge/github.com/yangchenxing/go-nginx-conf-parser)](https://goreportcard.com/report/github.com/yangchenxing/go-nginx-conf-parser)
 [![Build Status](https://travis-ci.org/yangchenxing/go-nginx-conf-parser.svg?branch=master)](https://travis-ci.org/yangchenxing/go-nginx-conf-parser)
 [![GoDoc](http://godoc.org/github.com/yangchenxing/go-nginx-conf-parser?status.svg)](http://godoc.org/github.com/yangchenxing/go-nginx-conf-parser)
