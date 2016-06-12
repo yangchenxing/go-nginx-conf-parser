@@ -1,18 +1,19 @@
 package ncparser
 
 import (
-	"bytes"
 	"testing"
 )
 
 func TestParser(t *testing.T) {
-	buf := bytes.NewBuffer([]byte(`
+	content := []byte(`
 #COMMENT
 # DOUBLE #COMMENT
 WORD1 WORD2;
 WORD3 {
-    WORD4 'SQ1' "DQ\t1";
-}`))
+    WORD4 'SQ1' "DQ\t1" #COMMENT
+    ;
+    #COMMENT
+}`)
 	expected := NginxConfigureBlock([]NginxConfigureCommand{
 		{
 			Words: []string{"WORD1", "WORD2"},
@@ -26,15 +27,70 @@ WORD3 {
 			}),
 		},
 	})
-	var parser Parser
-	block, err := parser.Parse(buf)
+	block, err := Parse(content)
 	if err != nil {
 		t.Error("parse fail:", err.Error())
 		t.FailNow()
 	}
 	if !equalBlock(block, expected) {
-		t.Error("unequal block: expected=%v, actual=%v", expected, block)
+		t.Errorf("unequal block: expected=%v, actual=%v\n", expected, block)
 		t.FailNow()
+	}
+}
+
+func TestParseUnterminatedCommand(t *testing.T) {
+	content := []byte(`WORD  `)
+	block, err := Parse(content)
+	if err == nil {
+		t.Error("unexpected parse result:", block)
+	}
+}
+
+func TestParseUnterminatedBlock(t *testing.T) {
+	content := []byte(`WORD { `)
+	block, err := Parse(content)
+	if err == nil {
+		t.Error("unexpected parse result:", block)
+	}
+}
+
+func TestParseInvalidTokenInCommand(t *testing.T) {
+	content := []byte(`WORD };`)
+	block, err := Parse(content)
+	if err == nil {
+		t.Error("unexpected parse result:", block)
+	}
+}
+
+func TestParseInvalidTokenInBlock(t *testing.T) {
+	content := []byte(`WORD { {`)
+	block, err := Parse(content)
+	if err == nil {
+		t.Error("unexpected parse result:", block)
+	}
+}
+
+func TestParseInvalidCommandInBlock(t *testing.T) {
+	content := []byte(`WORD { WORD`)
+	block, err := Parse(content)
+	if err == nil {
+		t.Error("unexpected parse result:", block)
+	}
+}
+
+func TestParseInvalidFirstToken(t *testing.T) {
+	content := []byte(`}`)
+	block, err := Parse(content)
+	if err == nil {
+		t.Error("unexpected parse result:", block)
+	}
+}
+
+func TestParseWithScannerFailure(t *testing.T) {
+	content := []byte(`"WORD\|"`)
+	block, err := Parse(content)
+	if err == nil {
+		t.Error("unexpected parse result:", block)
 	}
 }
 

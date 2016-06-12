@@ -8,101 +8,72 @@ import (
 	"unicode"
 )
 
-type TokenType int
+type tokenType int
 
 const (
-	ILLEGAL TokenType = iota
-	EOF
-	BRACE_OPEN
-	BRACE_CLOSE
-	SEMICOLON
-	WORD
-	COMMENT
+	eof tokenType = iota
+	braceOpen
+	braceClose
+	semicolon
+	word
+	comment
 )
 
 var (
-	tokenTypeName = map[TokenType]string{
-		ILLEGAL:     "ILLEGAL",
-		EOF:         "EOF",
-		BRACE_OPEN:  "BRACE_OPEN",
-		BRACE_CLOSE: "BRACE_CLOSE",
-		SEMICOLON:   "SEMICOLON",
-		WORD:        "WORD",
-		COMMENT:     "COMMENT",
+	tokenTypeName = map[tokenType]string{
+		eof:        "EOF",
+		braceOpen:  "BRACE_OPEN",
+		braceClose: "BRACE_CLOSE",
+		semicolon:  "SEMICOLON",
+		word:       "WORD",
+		comment:    "COMMENT",
 	}
 )
 
-type Token struct {
-	Type    TokenType
-	Literal string
-	Error   error
-}
-
-func (t TokenType) String() string {
+func (t tokenType) String() string {
 	return tokenTypeName[t]
 }
 
-func (t Token) String() string {
-	switch t.Type {
-	case EOF, BRACE_OPEN, BRACE_CLOSE, SEMICOLON:
-		return t.Type.String()
-	case ILLEGAL:
-		return fmt.Sprintf("%s[%s]", t.Type, t.Error.Error())
-	}
-	return fmt.Sprintf("%s[%s]", t.Type, t.Literal)
-}
-
-func newErrorToken(err error) Token {
-	return Token{Type: ILLEGAL, Error: err}
-}
-
-func newWordToken(word string) Token {
-	return Token{Type: WORD, Literal: word}
-}
-
-func newCommentToken(comment string) Token {
-	return Token{Type: COMMENT, Literal: comment}
+type token struct {
+	typ tokenType
+	lit string
 }
 
 var (
-	eofToken        = Token{Type: EOF}
-	braceOpenToken  = Token{Type: BRACE_OPEN}
-	braceCloseToken = Token{Type: BRACE_CLOSE}
-	semicolonToken  = Token{Type: SEMICOLON}
+	eofToken        = token{typ: eof}
+	braceOpenToken  = token{typ: braceOpen, lit: "{"}
+	braceCloseToken = token{typ: braceClose, lit: "}"}
+	semicolonToken  = token{typ: semicolon, lit: ";"}
 )
 
-type Scanner struct {
+type scanner struct {
 	r    *bufio.Reader
-	Line int
+	line int
 }
 
-func NewScanner(r io.Reader) *Scanner {
-	return &Scanner{
-		r: bufio.NewReader(r),
+func newScanner(content []byte) *scanner {
+	return &scanner{
+		r: bufio.NewReader(bytes.NewBuffer(content)),
 	}
 }
 
-func (s *Scanner) read() (rune, error) {
+func (s *scanner) read() (rune, error) {
 	r, _, err := s.r.ReadRune()
 	if r == '\n' {
-		s.Line++
+		s.line++
 	}
 	return r, err
 }
 
-func (s *Scanner) unread() {
+func (s *scanner) unread() {
 	s.r.UnreadRune()
 }
 
-func (s *Scanner) Scan() Token {
-	if err := s.skipWhitespace(); err != nil {
-		return newErrorToken(err)
-	}
+func (s *scanner) scan() token {
+	s.skipWhitespace()
 	r, err := s.read()
 	if err == io.EOF {
 		return eofToken
-	} else if err != nil {
-		return newErrorToken(err)
 	}
 	switch r {
 	case '\'':
@@ -122,16 +93,14 @@ func (s *Scanner) Scan() Token {
 	return s.scanWord()
 }
 
-func (s *Scanner) scanSingleQuoted() Token {
+func (s *scanner) scanSingleQuoted() token {
 	var buf bytes.Buffer
 	quoted := false
 ForLoop:
 	for {
 		r, err := s.read()
 		if err == io.EOF {
-			return newErrorToken(fmt.Errorf("missing terminating \\'\\ character at line %d", s.Line))
-		} else if err != nil {
-			return newErrorToken(err)
+			panic(fmt.Errorf("missing terminating \\'\\ character at line %d", s.line))
 		}
 		if quoted {
 			switch r {
@@ -145,15 +114,17 @@ ForLoop:
 				buf.WriteRune('"')
 			case '\'':
 				buf.WriteRune('\'')
+			case '\\':
+				buf.WriteRune('\\')
 			default:
-				return newErrorToken(fmt.Errorf("invalid quoted character: '\\%c'", r))
+				panic(fmt.Errorf("invalid quoted character: '\\%c'", r))
 			}
 			quoted = false
 			continue
 		}
 		switch r {
 		case '\n':
-			return newErrorToken(fmt.Errorf("missing terminating \\'\\ character at line %d", s.Line))
+			panic(fmt.Errorf("missing terminating \\'\\ character at line %d", s.line))
 		case '\\':
 			quoted = true
 		case '\'':
@@ -162,19 +133,17 @@ ForLoop:
 			buf.WriteRune(r)
 		}
 	}
-	return newWordToken(buf.String())
+	return token{typ: word, lit: buf.String()}
 }
 
-func (s *Scanner) scanDoubleQuoted() Token {
+func (s *scanner) scanDoubleQuoted() token {
 	var buf bytes.Buffer
 	quoted := false
 ForLoop:
 	for {
 		r, err := s.read()
 		if err == io.EOF {
-			return newErrorToken(fmt.Errorf("missing terminating \\\"\\ character at line %d", s.Line))
-		} else if err != nil {
-			return newErrorToken(err)
+			panic(fmt.Errorf("missing terminating \\\"\\ character at line %d", s.line))
 		}
 		if quoted {
 			switch r {
@@ -188,15 +157,17 @@ ForLoop:
 				buf.WriteRune('"')
 			case '\'':
 				buf.WriteRune('\'')
+			case '\\':
+				buf.WriteRune('\\')
 			default:
-				return newErrorToken(fmt.Errorf("invalid quoted character: '\\%c'", r))
+				panic(fmt.Errorf("invalid quoted character: '\\%c'", r))
 			}
 			quoted = false
 			continue
 		}
 		switch r {
 		case '\n':
-			return newErrorToken(fmt.Errorf("missing terminating \\\"\\ character at line %d", s.Line))
+			panic(fmt.Errorf("missing terminating \\\"\\ character at line %d", s.line))
 		case '\\':
 			quoted = true
 		case '"':
@@ -205,48 +176,36 @@ ForLoop:
 			buf.WriteRune(r)
 		}
 	}
-	return newWordToken(buf.String())
+	return token{typ: word, lit: buf.String()}
 }
 
-func (s *Scanner) skipWhitespace() error {
-	for {
-		r, err := s.read()
-		if err == io.EOF {
-			return nil
-		} else if err != nil {
-			return err
-		} else if !unicode.IsSpace(r) {
+func (s *scanner) skipWhitespace() {
+	for r, err := s.read(); err != io.EOF; r, err = s.read() {
+		if !unicode.IsSpace(r) {
 			s.unread()
 			break
 		}
 	}
-	return nil
 }
 
-func (s *Scanner) scanComment() Token {
+func (s *scanner) scanComment() token {
 	var buf bytes.Buffer
 	for {
 		r, err := s.read()
 		if err == io.EOF || r == '\n' {
 			break
 		}
-		if err != nil {
-			return newErrorToken(err)
-		}
 		buf.WriteRune(r)
 	}
-	return newCommentToken(buf.String())
+	return token{typ: comment, lit: buf.String()}
 }
 
-func (s *Scanner) scanWord() Token {
+func (s *scanner) scanWord() token {
 	var buf bytes.Buffer
 	for {
 		r, err := s.read()
 		if err == io.EOF {
 			break
-		}
-		if err != nil {
-			return newErrorToken(err)
 		}
 		if unicode.IsSpace(r) {
 			break
@@ -257,5 +216,5 @@ func (s *Scanner) scanWord() Token {
 		}
 		buf.WriteRune(r)
 	}
-	return newWordToken(buf.String())
+	return token{typ: word, lit: buf.String()}
 }

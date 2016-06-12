@@ -3,18 +3,25 @@ package ncparser
 import (
 	"container/list"
 	"fmt"
-	"io"
+	"sync"
 )
 
+// NginxConfigureBlock represent a block in nginx configure file.
+// The content of a nginx configure file should be a block.
 type NginxConfigureBlock []NginxConfigureCommand
 
+// NginxConfigureCommand represenct a command in nginx configure file.
 type NginxConfigureCommand struct {
+	// Words compose the command
 	Words []string
+
+	// Block follow the command
 	Block NginxConfigureBlock
 }
 
-type Parser struct {
-	s *Scanner
+type parser struct {
+	sync.Mutex
+	*scanner
 }
 
 var (
@@ -22,27 +29,38 @@ var (
 	emptyCommand = NginxConfigureCommand{}
 )
 
-func (p *Parser) Parse(r io.Reader) (NginxConfigureBlock, error) {
-	p.s = NewScanner(r)
+// Parse the content of nginx configure file into NginxConfigureBlock
+func Parse(content []byte) (blk NginxConfigureBlock, err error) {
+	var p parser
+	return p.parse(content)
+}
+
+func (p *parser) parse(content []byte) (blk NginxConfigureBlock, err error) {
+	p.Lock()
+	defer p.Unlock()
+	defer func() {
+		if e := recover(); e != nil {
+			err = e.(error)
+		}
+	}()
+	p.scanner = newScanner(content)
 	cmds := list.New()
 ForLoop:
 	for {
-		token := p.s.Scan()
-		switch token.Type {
-		case ILLEGAL:
-			return nil, token.Error
-		case EOF:
+		token := p.scan()
+		switch token.typ {
+		case eof:
 			break ForLoop
-		case WORD:
-			cmd, err := p.scanCommand(token.Literal)
+		case word:
+			cmd, err := p.scanCommand(token.lit)
 			if err != nil {
 				return nil, err
 			}
 			cmds.PushBack(cmd)
-		case COMMENT:
+		case comment:
 			continue
 		default:
-			return nil, fmt.Errorf("unexpected global token %s at line %d", token.Type, p.s.Line)
+			return nil, fmt.Errorf("unexpected global token %s at line %d", token.typ, p.line)
 		}
 	}
 	cfg := make([]NginxConfigureCommand, cmds.Len())
@@ -52,7 +70,7 @@ ForLoop:
 	return cfg, nil
 }
 
-func (p *Parser) scanCommand(startWord string) (NginxConfigureCommand, error) {
+func (p *parser) scanCommand(startWord string) (NginxConfigureCommand, error) {
 	words := list.New()
 	if startWord != "" {
 		words.PushBack(startWord)
@@ -61,26 +79,24 @@ func (p *Parser) scanCommand(startWord string) (NginxConfigureCommand, error) {
 	var block NginxConfigureBlock
 ForLoop:
 	for {
-		token := p.s.Scan()
-		switch token.Type {
-		case ILLEGAL:
-			return emptyCommand, token.Error
-		case EOF:
-			return emptyCommand, fmt.Errorf("missing terminating token at line %d", p.s.Line)
-		case BRACE_OPEN:
+		token := p.scan()
+		switch token.typ {
+		case eof:
+			return emptyCommand, fmt.Errorf("missing terminating token at line %d", p.line)
+		case braceOpen:
 			block, err = p.scanBlock()
 			if err != nil {
 				return emptyCommand, err
 			}
 			break ForLoop
-		case SEMICOLON:
+		case semicolon:
 			break ForLoop
-		case COMMENT:
+		case comment:
 			continue
-		case WORD:
-			words.PushBack(token.Literal)
+		case word:
+			words.PushBack(token.lit)
 		default:
-			return emptyCommand, fmt.Errorf("unexpected command token %s at line %d", token.Type, p.s.Line)
+			return emptyCommand, fmt.Errorf("unexpected command token %s at line %d", token.typ, p.line)
 		}
 	}
 	cmd := NginxConfigureCommand{
@@ -93,28 +109,26 @@ ForLoop:
 	return cmd, nil
 }
 
-func (p *Parser) scanBlock() (NginxConfigureBlock, error) {
+func (p *parser) scanBlock() (NginxConfigureBlock, error) {
 	cmds := list.New()
 ForLoop:
 	for {
-		token := p.s.Scan()
-		switch token.Type {
-		case ILLEGAL:
-			return emptyBlock, token.Error
-		case EOF:
-			return emptyBlock, fmt.Errorf("missing terminating token at line %d", p.s.Line)
-		case BRACE_CLOSE:
+		token := p.scan()
+		switch token.typ {
+		case eof:
+			return emptyBlock, fmt.Errorf("missing terminating token at line %d", p.line)
+		case braceClose:
 			break ForLoop
-		case COMMENT:
+		case comment:
 			continue
-		case WORD:
-			cmd, err := p.scanCommand(token.Literal)
+		case word:
+			cmd, err := p.scanCommand(token.lit)
 			if err != nil {
 				return emptyBlock, err
 			}
 			cmds.PushBack(cmd)
 		default:
-			return emptyBlock, fmt.Errorf("unexpected block token %s at line %d", token.Type, p.s.Line)
+			return emptyBlock, fmt.Errorf("unexpected block token %s at line %d", token.typ, p.line)
 		}
 	}
 	block := make([]NginxConfigureCommand, cmds.Len())
