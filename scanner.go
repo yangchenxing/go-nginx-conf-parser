@@ -210,6 +210,10 @@ func (s *scanner) scanWord() token {
 		if unicode.IsSpace(r) {
 			break
 		}
+		if r == '{' {
+			s.unread()
+			break
+		}
 		if r == ';' {
 			s.unread()
 			break
