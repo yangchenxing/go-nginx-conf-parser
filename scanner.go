@@ -39,6 +39,10 @@ type token struct {
 	lit string
 }
 
+func (t token) String() string {
+	return fmt.Sprintf("%s:%s", t.typ, t.lit)
+}
+
 var (
 	eofToken        = token{typ: eof}
 	braceOpenToken  = token{typ: braceOpen, lit: "{"}

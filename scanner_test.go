@@ -30,12 +30,12 @@ WORD3 {
 	for i, expectedToken := range expectedTokens {
 		token := scanner.scan()
 		if token != expectedToken {
-			t.Errorf("unexpected token: i=%d, expected=%q, actual=%q\n", i, expectedToken, token)
+			t.Errorf("unexpected token: i=%d, expected=%s, actual=%q\n", i, expectedToken, token)
 			t.FailNow()
 		}
 	}
 	if token := scanner.scan(); token.typ != eof {
-		t.Errorf("unexpected token: expected=%q, actual=%q\n", eofToken, token)
+		t.Errorf("unexpected token: expected=%s, actual=%q\n", eofToken, token)
 	}
 }
 
